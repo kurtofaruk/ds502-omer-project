@@ -70,13 +70,15 @@ filtered_instances.sort(key=lambda x: (x['nodes'], x['name']))
 
 instances=[]
 for inst_idx in range(len(filtered_instances)):
+    # inst_idx = 0
     
     instance_name = filtered_instances[inst_idx]["name"]
     coords = get_tsp_coords(instance_name)
     if coords is not None:
         C = c_values[inst_idx]
         kmeans = KMeans(n_init=10, n_clusters=C, random_state=RANDOM_STATE)
-        clusters = kmeans.fit_predict(coords)+1
+        clusters = kmeans.fit_predict(coords)
+        clusters = [int(v)+1 for v in clusters]
         instances.append({"key":instance_name,
                          "x_coords":coords[:,:1].flatten(),
                          "y_coords":coords[:,1:2].flatten(),
