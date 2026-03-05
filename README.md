@@ -32,8 +32,8 @@ This repository contains the end-to-end workflow for the project, spanning from 
 
 | Phase | Task | Status |
 | :--- | :--- | :--- |
-| **01** | Data Collection | ⬜ In Progress |
-| **02** | Model Creation | ⬜ Pending |
+| **01** | Data Collection | ✅ Done |
+| **02** | Model Creation | 🟨 In Progress |
 | **03** | Result Reporting | ⬜ Pending |
 | **04** | Plotting Functions | ⬜ Pending |
 | **05** | Final Report & Presentation | ⬜ Pending |
