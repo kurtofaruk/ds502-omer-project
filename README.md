@@ -38,4 +38,4 @@ This repository contains the end-to-end workflow for the project, spanning from 
 | **04** | Plotting Functions | ⬜ Pending |
 | **05** | Final Report & Presentation | ⬜ Pending |
 
-> **Pro Tip:** Code quality is monitored progressively. Ensure all contributions pass linting before merging to the main branch.
+>Code quality is monitored progressively. 
