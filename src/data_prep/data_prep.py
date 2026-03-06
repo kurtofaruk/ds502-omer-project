@@ -80,10 +80,10 @@ for inst_idx in range(len(filtered_instances)):
         clusters = kmeans.fit_predict(coords)
         clusters = [int(v)+1 for v in clusters]
         instances.append({"key":instance_name,
-                         "x_coords":coords[:,:1].flatten(),
-                         "y_coords":coords[:,1:2].flatten(),
-                         "clusters":clusters,
-                         "cluster_count":C})
+                         "x_coordinates":coords[:,:1].flatten(),
+                         "y_coordinates":coords[:,1:2].flatten(),
+                         "cluster_assignments":clusters,
+                         "n_clusters":C})
         
     else:
         pass
