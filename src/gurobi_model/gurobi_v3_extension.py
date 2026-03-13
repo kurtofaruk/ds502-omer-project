@@ -32,7 +32,7 @@ instances_main = pickle.load(open(f"../../data/tsplib_instances.pkl", "rb"))
 
 for sample_idx in tqdm(range(len(instances_main))):
     try:
-        # sample_idx = 10
+        # sample_idx = 15
         sample = instances_main[sample_idx]
 
         def extract_subtours(input_selected_edges):
@@ -324,18 +324,18 @@ for sample_idx in tqdm(range(len(instances_main))):
                                     if i!=k
                                     ), GRB.MINIMIZE)
 
-        #! Constraint 1
+        #! Constraint 1 - selection
         for i in M:
             model.addConstr(gp.quicksum(y[i,j] 
                                         for j in cluster_node_set[i]) == 1, name=f"one_node_from_cluster_{i}")
-        #! Constraint 2
+        #! Constraint 2 - outflow
         for i in M:
             for j in cluster_node_set[i]:
                 model.addConstr(gp.quicksum(x[i,j,k,l]
                                             for k in M 
                                             for l in cluster_node_set[k] 
                                             if i!=k) == y[i,j])
-        #! Constraint 3
+        #! Constraint 3 - inflow
         for k in M:
             for l in cluster_node_set[k]:
                 model.addConstr(gp.quicksum(x[i,j,k,l] 
@@ -343,7 +343,7 @@ for sample_idx in tqdm(range(len(instances_main))):
                                             for j in cluster_node_set[i] 
                                             if i!=k) == y[k,l])
                 
-        #! Constraint 4
+        #! Constraint 4 - cluster to cluster
         for i in M:
             for k in M:
                 if i!=k:
@@ -351,14 +351,14 @@ for sample_idx in tqdm(range(len(instances_main))):
                                                 for j in cluster_node_set[i]
                                                 for l in cluster_node_set[k]
                                                 ) == z[i,k])
-
-        #! Constraint 4
+        """
+        #! Constraint 5
         for i in M:
             model.addConstr(gp.quicksum(z[i,k] for k in M  if i!=k) >= 1)
 
-        #! Constraint 5
+        #! Constraint 6
         model.addConstr(gp.quicksum(z[i,k] for k in M  for i in M if i!=k) == m)
-
+        """
 
         model.write(f"ds502_project_{sample["key"]}.lp")  # Human-readable LP format
         #with open(f"ds502_project.lp", "r") as f:
@@ -455,10 +455,9 @@ for sample_idx in tqdm(range(len(instances_main))):
 
         plot_ctsp_result(all_dict, out_route, out_clusters, clusters, result['objective'],
                         show=True,
-                        save_path=f"../../figures/{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}",
+                        save_path=f"../../figures/{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}_extension",
                         figsize=None,
                         input_title=f"{sample['key']}"
-                    #save_path=f"../../../04-reports/figures/{N}_{C+1}_{K}_ga_est_concorde_{PARAM_MODEL_TYPE}_{PATH_K}_{benchmark_param}.png"
                     )
 
         report_list.append({"key":sample['key'],
@@ -470,4 +469,4 @@ for sample_idx in tqdm(range(len(instances_main))):
     except:
         pass
 
-pd.DataFrame(report_list).to_excel("../../reports/results.xlsx")
+pd.DataFrame(report_list).to_excel("../../reports/results_extension_TSP.xlsx")

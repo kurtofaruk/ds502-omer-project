@@ -30,9 +30,9 @@ from plot_route_result import plot_ctsp_result
 report_list=[]
 instances_main = pickle.load(open(f"../../data/tsplib_instances.pkl", "rb"))
 
-for sample_idx in tqdm(range(len(instances_main))):
+for sample_idx in tqdm(range(len(instances_main))[:10]):
     try:
-        # sample_idx = 3
+        # sample_idx = 12
         sample = instances_main[sample_idx]
 
         def get_clusters(labels_inputs,C):
@@ -118,27 +118,30 @@ for sample_idx in tqdm(range(len(instances_main))):
 
         # ----------------------------
         model = gp.Model("DS502_Project",env=env)
-        #model.setParam('OutputFlag', 0)
-        model.Params.TimeLimit = 60
+        #model.setParam('OutputFlag', 1)
+        model.Params.TimeLimit = 60*10
 
         model.Params.Threads = 8
 
 
         # OPTIMIZATION 3: More efficient MIP settings
-        #model.setParam('MIPGap', 0.05) # Stop when within 5% of the optimum
+        model.setParam('MIPGap', 0.01) # Stop when within 5% of the optimum
         #model.Params.MIPFocus = 1  # Focus on finding good feasible solutions
-        #model.Params.Heuristics = 0.5  # Moderate heuristics
-        #model.Params.NoRelaxedMIPHeuristic = 0  # Enable relaxation-based heuristic
-
-        #model.Params.Cuts = 2  # Aggressive cut generation
+        model.Params.Heuristics = 0.5  # Moderate heuristics
+        
+        model.Params.Cuts = 2  # Aggressive cut generation
         #model.NumStart = 1  # Number of warm starts
         #model.Params.StartNumber = 0  # Use warm start
 
         cluster_node_set = {i: list(range(1, n_i[i] + 1)) for i in M}
         cluster_node_set_ = {(i, j): 0 for i in M for j in range(1, n_i[i] + 1)}
-        cross_cluster_nodes_set = {(i,j,k,l): 0 for i in M for j in range(1, n_i[i] + 1) for k in M if i!=k for l in range(1, n_i[k] + 1)  }
+        cross_cluster_nodes_set = {(i,j,k,l): 0 
+                                   for i in M
+                                   for j in range(1, n_i[i] + 1)
+                                   for k in M if i!=k 
+                                   for l in range(1, n_i[k] + 1)  }
         cross_cluster_set = {(i, j): 0 for i in M for j in M if i!=j}
-
+        #n_i[3]
         # 2. Build the Cost Matrix (Dictionary format for Gurobi)
         cost_matrix = {}
         for n1 in all_dict.keys():
@@ -156,8 +159,7 @@ for sample_idx in tqdm(range(len(instances_main))):
         y = model.addVars(cluster_node_set_.keys(), vtype=GRB.BINARY, name="y")
         x = model.addVars(cross_cluster_nodes_set.keys(), vtype=GRB.BINARY, name="x")
         z = model.addVars(cross_cluster_set.keys(), vtype=GRB.BINARY, name="z")
-        #p = model.addVars(_passenger_index, vtype=GRB.CONTINUOUS, lb=0.0, name="p")
-
+        
         #! Objective MIN-Z
         model.setObjective(gp.quicksum(cost_matrix[i,j,k,l] * x[i,j,k,l]
                                     for i in M
@@ -196,6 +198,7 @@ for sample_idx in tqdm(range(len(instances_main))):
                                                 ) == z[i,k])
 
         #! Constraint 5
+        
         for size in tqdm(range(1, len(M))):
             # size=16
             for s in combinations(M, size):
@@ -205,12 +208,11 @@ for sample_idx in tqdm(range(len(instances_main))):
                     gp.quicksum(z[i, k] for i in s_set for k in not_s) >= 1,
                     name=f"C5_subtour_{'_'.join(map(str, s))}"
                 )
-
+        
         model.write(f"../../reports/lp_models/ds502_project_{m}{sample['key']}.lp")  # Human-readable LP format
         #with open(f"ds502_project.lp", "r") as f:
         #    lp_text = f.read()
         #    print(lp_text)
-
         
         model._x = x
         model._y = y
@@ -273,8 +275,6 @@ for sample_idx in tqdm(range(len(instances_main))):
             print(f"Gap: {result['gap']*100:.2f}%")
             print(f"Gap-Nominal: {result['abs_gap']:.2f}")
 
-
-
         # Build adjacency from (cluster,node) -> (cluster,node)
         adjacency = {(i,j): (k,l) for (i,j,k,l) in selected_edges}
 
@@ -298,13 +298,14 @@ for sample_idx in tqdm(range(len(instances_main))):
             
             out_clusters[v] = [node[0] for node in tour]
             #out_clusters[v].append(tour[v][0])
-
+        len(out_route[v]),len(out_clusters[v])
+        
         plot_ctsp_result(all_dict, out_route, out_clusters, clusters, result['objective'],
                         show=True,
                         save_path=f"../../figures/{m}{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}",
                         figsize=None,
-                        input_title=f"{sample['key']}"
-                    #save_path=f"../../../04-reports/figures/{N}_{C+1}_{K}_ga_est_concorde_{PARAM_MODEL_TYPE}_{PATH_K}_{benchmark_param}.png"
+                        input_title=f"{sample['key']}",
+                        #save_path=f"../../../04-reports/figures/{N}_{m+1}_{K}_ga_est_concorde_{PARAM_MODEL_TYPE}_{PATH_K}_{benchmark_param}.png"
                     )
 
         report_list.append({"key":sample['key'],
