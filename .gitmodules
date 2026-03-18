@@ -1,0 +1,3 @@
+[submodule "src/main/src/main/data/tsplib"]
+	path = src/main/src/main/data/tsplib
+	url = https://github.com/mastqe/tsplib.git

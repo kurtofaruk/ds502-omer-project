@@ -26,160 +26,15 @@ from datetime import date,datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / "visualisations"))
 from plot_route_result import plot_ctsp_result
 
-report_list=[]
-instances_main = pickle.load(open(f"../../data/tsplib_instances.pkl", "rb"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "gurobi_model"))
+from gurobi_functions import _prepare_instance,compute_distance_matrix,subtourelim
  
  
-def extract_subtours(input_selected_edges):
-    active_edges = [((i, j), (k, l)) for (i, j, k, l) in input_selected_edges]
-    G = nx.DiGraph()  # Use directed graph to preserve arc direction
-    G.add_edges_from(active_edges)
-    subtours = [sorted(list(c)) for c in nx.weakly_connected_components(G)]
-    return subtours
-    
-
-def get_perm_of_subtours(input_subtour):
-    unique_slices = set()
-    n = len(input_subtour)
-    for i in range(n):
-        node_a = input_subtour[i]
-        node_b = input_subtour[(i + 1) % n]
-        fwd = tuple(list(node_a) + list(node_b))
-        unique_slices.add(fwd)
-    return list(unique_slices)
-
-
-def get_clusters(labels_inputs, C):
-    """Map cluster labels (1-based) to lists of customer indices (1-based)."""
-    cluster_mapping = {i + 1: [] for i in range(C)}
-    for customer, cluster_label in enumerate(labels_inputs, start=1):
-        cluster_mapping[cluster_label].append(customer)
-    return cluster_mapping
-
-
-def get_clustered_nodes(input_clusters, C):
-    """
-    For each cluster, create a mapping from original node ID → within-cluster index (1-based).
-    Returns: {cluster_id: {original_node: indexed_node}}
-    """
-    node_mapping = {}
-    for cluster_id in range(1, C + 1):
-        cluster_nodes = input_clusters[cluster_id]
-        node_mapping[cluster_id] = {
-            original: idx + 1
-            for idx, original in enumerate(cluster_nodes)
-        }
-    return node_mapping
-
-
-def get_all_dict(input_coordinates, input_clustered_nodes):
-    """
-    Build a lookup dict keyed by original node ID.
-    FIX: was incorrectly iterating over dict keys with enumerate(nodes),
-        now correctly uses (original_node, indexed_node) pairs.
-    """
-    new_dict = {}
-    for cluster_id, node_map in input_clustered_nodes.items():
-        for original_node, indexed_node in node_map.items():
-            new_dict[original_node] = {
-                'coordinates': [int(x) for x in input_coordinates[original_node - 1]],
-                'cluster': cluster_id,
-                'indexed_node': indexed_node,
-            }
-    return new_dict
-
-
-def compute_distance_matrix(coord_i, coord_j):
-    dist = round(
-        float(np.sqrt((coord_i[0] - coord_j[0]) ** 2 + (coord_i[1] - coord_j[1]) ** 2)),
-        2
-    )
-    return dist
-
-
-def _prepare_instance(inst):
-    N = len(inst['x_coordinates'])
-    C = inst['n_clusters']
-    coords = np.column_stack((inst['x_coordinates'], inst['y_coordinates']))
-    clusters = get_clusters(np.array(inst['cluster_assignments']), C)
-    clusters_to_nodes = get_clustered_nodes(clusters, C)
-    all_dict = get_all_dict(coords, clusters_to_nodes)  # FIX: pass clusters_to_nodes, not clusters
-    all_dict = {k: all_dict[k] for k in sorted(all_dict)}
-    return N, C, clusters, clusters_to_nodes, all_dict
-
-
-# ─────────────────────────────────────────────
-# Lazy constraint callback
-# ─────────────────────────────────────────────
-def subtourelim(model, where):
-    if where != GRB.Callback.MIPSOL:
-        return
-
+def run_gurobi_model_for_instance(input_instances_main,idx,input_time_limit=60,n_thread=8):
+    # input_instances_main,idx = instances_main,0
+    report_list=[]
     try:
-        vals_x = model.cbGetSolution(model._x)
-
-        selected_edges = gp.tuplelist(
-            (i, j, k, l)
-            for (i, j, k, l) in model._x.keys()
-            if vals_x[i, j, k, l] > 0.5
-        )
-
-        #model.optimize()
-        #vals_x = model.getAttr('x', x)
-        #selected_edges = [(i,j,k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
-
-
-        tours = extract_subtours(selected_edges)
-
-        for subtour in tours:
-            # subtour = tours[2]
-            clusters_in_subtour = set(node[0] for node in subtour)
-
-            if len(clusters_in_subtour) == len(model._M):
-                continue
-
-            subtour_node_set = set(subtour)  # e.g. {(1,3), (8,2), (9,2)}
-
-            # Filter original selected edges — preserves exact arc direction
-            subtour_edges = [
-                (i, j, k, l)
-                for (i, j, k, l) in selected_edges
-                if (i, j) in subtour_node_set and (k, l) in subtour_node_set
-            ]
-
-            if not subtour_edges:
-                continue
-
-            lhs_x = gp.quicksum(
-                model._x[i, j, k, l]
-                for (i, j, k, l) in subtour_edges
-                if (i, j, k, l) in model._x
-            )
-
-            lhs_y = gp.quicksum(
-                model._y[i, j]
-                for (i, j) in subtour_node_set
-                if (i, j) in model._y
-            )
-
-            #model.cbLazy(lhs_x - lhs_y <= -1)
-            #rhs = len(subtour_edges) - 1
-            
-            model.cbLazy(lhs_x <= len(subtour_edges) - 1)
-            #model.addConstr(lhs_x  <= len(subtour_edges) - 1)
-            #model.addConstr(lhs <= rhs)
-            #print(lhs_x,"<=",len(subtour_edges),"- 1")
-            #print(lhs_x, "-", lhs_y, "<= -1")
-            
-
-    except Exception as e:
-        print(f"[Callback Error]: {e}")
-
-
-    
-def run_gurobi_model_for_instance(idx):
-    try:
-        sample = instances_main[idx]
+        sample = input_instances_main[idx]
         N, m, clusters, clusters_to_nodes, all_dict = _prepare_instance(sample)
         M = list(range(1, m + 1))
 
@@ -210,8 +65,8 @@ def run_gurobi_model_for_instance(idx):
         env.start()
 
         model = gp.Model("DS502_Project", env=env)
-        model.Params.TimeLimit = 60
-        model.Params.Threads = 8
+        model.Params.TimeLimit = input_time_limit
+        model.Params.Threads = n_thread
         model.Params.LazyConstraints = 1
 
         # ── Variable index sets ────────────────────────────────────────────────────────
@@ -246,14 +101,14 @@ def run_gurobi_model_for_instance(idx):
 
         # ── Constraints ────────────────────────────────────────────────────────────────
 
-        # (C1) Exactly one node selected per cluster
+        #! C1: Exactly one node selected per cluster
         for i in M:
             model.addConstr(
                 gp.quicksum(y[i, j] for j in cluster_node_set[i]) == 1,
                 name=f"one_node_per_cluster_{i}"
             )
 
-        # (C2) Out-degree: selected node sends exactly one arc out
+        #! C2: Out-Flow: selected node sends exactly one arc out
         for i in M:
             for j in cluster_node_set[i]:
                 model.addConstr(
@@ -262,10 +117,10 @@ def run_gurobi_model_for_instance(idx):
                         for k in M for l in cluster_node_set[k]
                         if i != k
                     ) == y[i, j],
-                    name=f"outdegree_{i}_{j}"
+                    name=f"outflow_{i}_{j}"
                 )
 
-        # (C3) In-degree: selected node receives exactly one arc in
+        #! C3: In-Flow: selected node receives exactly one arc in
         for k in M:
             for l in cluster_node_set[k]:
                 model.addConstr(
@@ -274,27 +129,21 @@ def run_gurobi_model_for_instance(idx):
                         for i in M for j in cluster_node_set[i]
                         if i != k
                     ) == y[k, l],
-                    name=f"indegree_{k}_{l}"
+                    name=f"inflow_{k}_{l}"
                 )
 
-        # NOTE: The z linking constraints and the two commented-out cluster-arc
-        # constraints are fully removed. C1+C2+C3 already enforce that exactly
-        # one Hamiltonian cycle visits one node per cluster. Subtours are handled
-        # by the lazy callback on x alone.
-
-        # ── Attach data to model for callback ─────────────────────────────────────────
         model._x = x
         model._y = y
         model._M = M
 
         #model.optimize()
-        # ── Write LP and solve ─────────────────────────────────────────────────────────
+    
         model.write(f"../../reports/lp_models/ds502_project_{sample['key']}.lp")
         model.optimize(subtourelim)
         
         end_time = datetime.now()
         runtime = f"{(end_time - start_time).total_seconds():.4f}"
-        print(f"Runtime: {runtime}s | Status: {model.Status} | ObjVal: {model.ObjVal if model.SolCount > 0 else 'N/A'}")
+        #print(f"Runtime: {runtime}s | Status: {model.Status} | ObjVal: {model.ObjVal if model.SolCount > 0 else 'N/A'}")
 
         # Extract solution
         result = {
@@ -337,7 +186,10 @@ def run_gurobi_model_for_instance(idx):
             # visited = [(i,k) for (i,k) in cross_cluster_set.keys() if vals_z[i,k] > 0.5]
             
             #result['visited_clusters'] = list(set(visited))  # Remove duplicates from multi-vehicle
-
+            print(f"Instance: {sample['key']}")
+            print(f"Nodes: {N}")
+            print(f"Clusters: {m}")
+    
             print(f"Objective: {result['objective']}")
             print(f"Runtime: {runtime}")
             print(f"Gap: {result['gap']*100:.2f}%")
@@ -364,7 +216,6 @@ def run_gurobi_model_for_instance(idx):
             tour.append(current)
             current = adjacency.get(current)
             if current is None:
-                print("[Warning] Broken tour chain — solution may be infeasible")
                 break
 
         # Build route and cluster sequences, closing the tour back to start
@@ -376,7 +227,7 @@ def run_gurobi_model_for_instance(idx):
             show=False,
             figsize=None,
             input_title=f"{sample['key']}",
-            save_path=f"../../figures/{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}_extension",    
+            save_path=f"./figures/{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}_extension",    
         )
         report_list.append({"key":sample['key'],
                             "obj":result["objective"],
@@ -388,5 +239,3 @@ def run_gurobi_model_for_instance(idx):
     except:
         pass
 
-
-pd.DataFrame(report_list).to_excel("../../reports/results_extension_TSP.xlsx")

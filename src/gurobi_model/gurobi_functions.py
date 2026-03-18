@@ -25,89 +25,147 @@ from pathlib import Path,PurePosixPath
 import importlib.util
 import json
 
-def complete_routes_of_nodes(input_data):
-    #input_data=[0,4]
-    last_arc=[]
-    if not input_data:
-        return input_data  # Return empty list if data is empty
-    # Extract the starting (cluster_1, city_1) and ending (cluster_2, city_2) from the first and last tuples
-    start_city = input_data[0]
-    end_city = input_data[-1]
-    # Add the closing edge (end_cluster, end_city) to (start_cluster, start_city)
-    last_arc.append((end_city,start_city))    
-    return last_arc
+def extract_subtours(input_selected_edges):
+    active_edges = [((i, j), (k, l)) for (i, j, k, l) in input_selected_edges]
+    G = nx.DiGraph()  # Use directed graph to preserve arc direction
+    G.add_edges_from(active_edges)
+    subtours = [sorted(list(c)) for c in nx.weakly_connected_components(G)]
+    return subtours
+    
 
 def get_perm_of_subtours(input_subtour):
-    # input_subtour = [0, 3, 5]
     unique_slices = set()
-    for i in range(len(input_subtour)-1):
-        unique_slices.add((input_subtour[i],input_subtour[i+1]))
-        unique_slices.update(complete_routes_of_nodes(input_subtour))
-    final_combinations = list(unique_slices)  # Convert set to list for indexing
-    return final_combinations
+    n = len(input_subtour)
+    for i in range(n):
+        node_a = input_subtour[i]
+        node_b = input_subtour[(i + 1) % n]
+        fwd = tuple(list(node_a) + list(node_b))
+        unique_slices.add(fwd)
+    return list(unique_slices)
 
-def extract_subtours(input_selected_edges):
+
+def get_clusters(labels_inputs, C):
+    """Map cluster labels (1-based) to lists of customer indices (1-based)."""
+    cluster_mapping = {i + 1: [] for i in range(C)}
+    for customer, cluster_label in enumerate(labels_inputs, start=1):
+        cluster_mapping[cluster_label].append(customer)
+    return cluster_mapping
+
+
+def get_clustered_nodes(input_clusters, C):
     """
-    input_selected_edges = selected_edges_tl
-    input_unique_route=list(range(C+1))
-    input_active_vehicles_=active_vehicles_
+    For each cluster, create a mapping from original node ID → within-cluster index (1-based).
+    Returns: {cluster_id: {original_node: indexed_node}}
     """
-    # Separate edges by vehicle
-    vehicle_edges = {}
-    for i,j,v in input_selected_edges:
-        vehicle_edges.setdefault(v, []).append((i, j))
-
-    subtours_per_vehicle = {}
-
-    for v, e_list in vehicle_edges.items():
-        G = nx.DiGraph()
-        G.add_edges_from(e_list)
-
-        # Extract all simple cycles (subtours)
-        cycles = list(nx.simple_cycles(G))
-
-        subtours_per_vehicle[v] = cycles
-    return subtours_per_vehicle
+    node_mapping = {}
+    for cluster_id in range(1, C + 1):
+        cluster_nodes = input_clusters[cluster_id]
+        node_mapping[cluster_id] = {
+            original: idx + 1
+            for idx, original in enumerate(cluster_nodes)
+        }
+    return node_mapping
 
 
+def get_all_dict(input_coordinates, input_clustered_nodes):
+    """
+    Build a lookup dict keyed by original node ID.
+    FIX: was incorrectly iterating over dict keys with enumerate(nodes),
+        now correctly uses (original_node, indexed_node) pairs.
+    """
+    new_dict = {}
+    for cluster_id, node_map in input_clustered_nodes.items():
+        for original_node, indexed_node in node_map.items():
+            new_dict[original_node] = {
+                'coordinates': [int(x) for x in input_coordinates[original_node - 1]],
+                'cluster': cluster_id,
+                'indexed_node': indexed_node,
+            }
+    return new_dict
+
+
+def compute_distance_matrix(coord_i, coord_j):
+    dist = round(
+        float(np.sqrt((coord_i[0] - coord_j[0]) ** 2 + (coord_i[1] - coord_j[1]) ** 2)),
+        2
+    )
+    return dist
+
+
+def _prepare_instance(inst):
+    N = len(inst['x_coordinates'])
+    C = inst['n_clusters']
+    coords = np.column_stack((inst['x_coordinates'], inst['y_coordinates']))
+    clusters = get_clusters(np.array(inst['cluster_assignments']), C)
+    clusters_to_nodes = get_clustered_nodes(clusters, C)
+    all_dict = get_all_dict(coords, clusters_to_nodes)  # FIX: pass clusters_to_nodes, not clusters
+    all_dict = {k: all_dict[k] for k in sorted(all_dict)}
+    return N, C, clusters, clusters_to_nodes, all_dict
+
+
+# ─────────────────────────────────────────────
+# Lazy constraint callback
+# ─────────────────────────────────────────────
 def subtourelim(model, where):
     if where != GRB.Callback.MIPSOL:
         return
 
     try:
-        # Get solution values
-        vals = model.cbGetSolution(model._vars)
+        vals_x = model.cbGetSolution(model._x)
 
-        # Extract selected arcs: (v, i, j)
-        selected_edges = gp.tuplelist((i,j,v) for (i,j,v) in model._vars.keys() if vals[i,j,v] > 0.5)
-        # selected_edges = gp.tuplelist((i,j,v) for (i,j,v), var_ in model._vars.items() if var_.x > 0.5)
+        selected_edges = gp.tuplelist(
+            (i, j, k, l)
+            for (i, j, k, l) in model._x.keys()
+            if vals_x[i, j, k, l] > 0.5
+        )
 
-        if not selected_edges:
-            return
+        #model.optimize()
+        #vals_x = model.getAttr('x', x)
+        #selected_edges = [(i,j,k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
 
-        # Compute subtours per vehicle
+
         tours = extract_subtours(selected_edges)
 
-        # Vehicles with >1 subtour → need constraints
-        violating_vehicles = [v for v, subtour_list in tours.items() if len(subtour_list) > 1]
+        for subtour in tours:
+            # subtour = tours[2]
+            clusters_in_subtour = set(node[0] for node in subtour)
 
-        # ⛔ EARLY EXIT: If no subtours → stop immediately
-        if not violating_vehicles:
-            return
+            if len(clusters_in_subtour) == len(model._M):
+                continue
 
-        # Add lazy constraints for all violating vehicles
-        for v in violating_vehicles:
-            for r, subtour in enumerate(tours[v]):
+            subtour_node_set = set(subtour)  # e.g. {(1,3), (8,2), (9,2)}
 
-                # Get arcs inside this subtour
-                subtour_edges = get_perm_of_subtours(subtour)
+            # Filter original selected edges — preserves exact arc direction
+            subtour_edges = [
+                (i, j, k, l)
+                for (i, j, k, l) in selected_edges
+                if (i, j) in subtour_node_set and (k, l) in subtour_node_set
+            ]
 
-                # Lazy constraint: eliminate this subtour
-                lhs = gp.quicksum(model._vars[i,j,v] for (i, j) in subtour_edges)
-                rhs = len(subtour_edges) - 1
-                model.cbLazy(lhs <= rhs)
-                #model.addConstr(lhs <= rhs)
+            if not subtour_edges:
+                continue
 
-                #print(f"[Lazy] Vehicle={v} | Subtour={r} | Nodes={len(subtour)} | " f"Edges={len(subtour_edges)} | RHS={rhs}")
+            lhs_x = gp.quicksum(
+                model._x[i, j, k, l]
+                for (i, j, k, l) in subtour_edges
+                if (i, j, k, l) in model._x
+            )
+
+            lhs_y = gp.quicksum(
+                model._y[i, j]
+                for (i, j) in subtour_node_set
+                if (i, j) in model._y
+            )
+
+            #model.cbLazy(lhs_x - lhs_y <= -1)
+            #rhs = len(subtour_edges) - 1
+            
+            model.cbLazy(lhs_x <= len(subtour_edges) - 1)
+            #model.addConstr(lhs_x  <= len(subtour_edges) - 1)
+            #model.addConstr(lhs <= rhs)
+            #print(lhs_x,"<=",len(subtour_edges),"- 1")
+            #print(lhs_x, "-", lhs_y, "<= -1")
+            
+
     except Exception as e:
         print(f"[Callback Error]: {e}")
