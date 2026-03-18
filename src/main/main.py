@@ -28,7 +28,7 @@ def main():
     
     report_list = []
     
-    for idx in tqdm(range(len(instances))[1:4]):
+    for idx in tqdm(range(len(instances))[:]):
         #run_gurobi_model_for_instance(instances,0)
         report_idx=run_gurobi_model_for_instance(instances,idx)
         report_list.extend(report_idx)
