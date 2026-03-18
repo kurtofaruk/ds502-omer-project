@@ -6,7 +6,7 @@
 
 This repository contains the end-to-end workflow for the project, spanning from initial data acquisition to final stakeholder delivery.
 
-## Main Script: Project can be run by src/main/main.py
+## 🧑🏻‍💻 Main Script: Project can be run by src/main/main.py ⩤
 ---
 
 ## 🚀 Project Milestones
