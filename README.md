@@ -42,12 +42,12 @@ This repository contains the end-to-end workflow for the project, spanning from 
 
 ## 🛠 Progress Tracker
 
-| Phase | Task | Status |
-| :--- | :--- | :--- |
-| **01** | Data Collection | ✅ Done |
-| **02** | Model Creation | ✅ Done |
-| **03** | Result Reporting | ✅ Done |
-| **04** | Plotting Functions | ✅ Done |
+| Phase | Task | Script | Status |
+| :--- | :--- | :--- | :--- |
+| **01** | Data Collection | data_prep.py | ✅ Done |
+| **02** | Model Creation | model.py | ✅ Done |
+| **03** | Result Reporting | report.py | ✅ Done |
+| **04** | Plotting Functions | report.py | ✅ Done |
 | **05** | Final Report & Presentation | 🟨 In Progress |
 
 >Code quality is monitored progressively. 
