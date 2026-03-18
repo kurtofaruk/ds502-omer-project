@@ -32,16 +32,16 @@ instances_main = pickle.load(open(f"../../data/tsplib_instances.pkl", "rb"))
 
 for sample_idx in tqdm(range(len(instances_main))):
     try:
-        # sample_idx = 1
+        # sample_idx = -1
         sample = instances_main[sample_idx]
 
         def extract_subtours(input_selected_edges):
             active_edges = [((i, j), (k, l)) for (i, j, k, l) in input_selected_edges]
-            G = nx.Graph()
+            G = nx.DiGraph()  # Use directed graph to preserve arc direction
             G.add_edges_from(active_edges)
-            subtours = [sorted(list(c)) for c in nx.connected_components(G)]
+            subtours = [sorted(list(c)) for c in nx.weakly_connected_components(G)]
             return subtours
-        
+            
         
         def get_perm_of_subtours(input_subtour):
             unique_slices = set()
@@ -116,84 +116,151 @@ for sample_idx in tqdm(range(len(instances_main))):
         # ─────────────────────────────────────────────
         # Lazy constraint callback
         # ─────────────────────────────────────────────
-        
         def subtourelim(model, where):
-            """
-            FIX 1: Removed `model._x = x` re-assignment inside callback (used outer-scope x, risky).
-            FIX 2: Changed `break` → `continue` so remaining subtours still get cuts after
-                a full-tour component is found in the same callback invocation.
-            """
             if where != GRB.Callback.MIPSOL:
                 return
-        
+
             try:
                 vals_x = model.cbGetSolution(model._x)
-        
+
                 selected_edges = gp.tuplelist(
                     (i, j, k, l)
                     for (i, j, k, l) in model._x.keys()
                     if vals_x[i, j, k, l] > 0.5
                 )
-        
+
+                #model.optimize()
+                #vals_x = model.getAttr('x', x)
+                #selected_edges = [(i,j,k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
+
+
                 tours = extract_subtours(selected_edges)
-        
+
                 for subtour in tours:
+                    # subtour = tours[2]
                     clusters_in_subtour = set(node[0] for node in subtour)
-        
-                    # FIX: was `break` — that exited the entire loop, skipping remaining subtours.
-                    # `continue` skips adding a cut only for the full tour component.
+
                     if len(clusters_in_subtour) == len(model._M):
                         continue
-        
-                    subtour_edges = get_perm_of_subtours(subtour)
-                    subtour_nodes = set([(i[0], i[1]) for i in subtour_edges])
-                    subtour_clusters = [(i[0], i[2]) for i in subtour_edges]
-        
+
+                    subtour_node_set = set(subtour)  # e.g. {(1,3), (8,2), (9,2)}
+
+                    # Filter original selected edges — preserves exact arc direction
+                    subtour_edges = [
+                        (i, j, k, l)
+                        for (i, j, k, l) in selected_edges
+                        if (i, j) in subtour_node_set and (k, l) in subtour_node_set
+                    ]
+
                     if not subtour_edges:
                         continue
-        
-                    lhs = gp.quicksum(
+
+                    lhs_x = gp.quicksum(
                         model._x[i, j, k, l]
                         for (i, j, k, l) in subtour_edges
                         if (i, j, k, l) in model._x
                     )
-        
+
                     lhs_y = gp.quicksum(
                         model._y[i, j]
-                        for (i, j) in subtour_nodes
+                        for (i, j) in subtour_node_set
                         if (i, j) in model._y
                     )
-        
-                    lhs_z = gp.quicksum(
-                        model._z[i, k]
-                        for (i, k) in subtour_clusters
-                        if (i, k) in model._z
-                    )
-        
-                    rhs = len(subtour_edges) - 1
-        
-                    model.cbLazy(lhs <= rhs)
-                    model.cbLazy(lhs_y <= rhs)
-                    model.cbLazy(lhs_z <= rhs)
-        
+
+                    #model.cbLazy(lhs_x - lhs_y <= -1)
+                    #rhs = len(subtour_edges) - 1
+                    
+                    model.cbLazy(lhs_x <= len(subtour_edges) - 1)
+                    #model.addConstr(lhs_x  <= len(subtour_edges) - 1)
+                    #model.addConstr(lhs <= rhs)
+                    #print(lhs_x,"<=",len(subtour_edges),"- 1")
+                    #print(lhs_x, "-", lhs_y, "<= -1")
+                    
+
             except Exception as e:
                 print(f"[Callback Error]: {e}")
-        
+
+        """
+        def subtourelim(model, where):
+            '''
+            Lazy subtour elimination callback.
+            Only adds cuts on x (edge-level), which are the tightest possible.
+            Removed redundant y and z cuts.
+            '''
+            if where != GRB.Callback.MIPSOL:
+                return
+
+            try:
+                vals_x = model.cbGetSolution(model._x)
+
+                selected_edges = gp.tuplelist(
+                    (i, j, k, l)
+                    for (i, j, k, l) in model._x.keys()
+                    if vals_x[i, j, k, l] > 0.5
+                )
+                
+                model.optimize()
+                vals_x = model.getAttr('x', x)
+                selected_edges = [(i,j,k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
+
+                #vals_y = model.getAttr('x', y)
+                #cluster_node_inflow = [(i,j) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
+                #cluster_node_outflow = [(k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
+                                
+                
+                tours = extract_subtours(selected_edges)
+
+                for subtour in tours:
+                    clusters_in_subtour = set(node[0] for node in subtour)
+
+                    # Skip if this is already the full Hamiltonian tour
+                    if len(clusters_in_subtour) == len(model._M):
+                        continue
+
+                    subtour_edges = get_perm_of_subtours(subtour)
+                    subtour_nodes = set((i, j) for (i, j, k, l) in subtour_edges)
+                    s = len(subtour_edges)  # number of edges = number of clusters in subtour
+
+
+                    if not subtour_edges:
+                        continue
+
+                    lhs_x = gp.quicksum(
+                        model._x[i, j, k, l]
+                        for (i, j, k, l) in subtour_edges
+                        if (i, j, k, l) in model._x
+                    )
+                    lhs_y = gp.quicksum(
+                            model._y[i, j]
+                            for (i, j) in subtour_nodes
+                            if (i, j) in model._y
+                        )
+
+                    #rhs = len(subtour_edges) - 1
+                    
+                    #model.cbLazy(lhs <= rhs)
+                    model.addConstr(lhs_x  <= len(subtour_edges) - 1)
+                    #model.addConstr(lhs <= rhs)
+                    print(lhs_x,"<=",len(subtour_edges),"- 1")
+                    #print(lhs_x, "-", lhs_y, "<= -1")
+                    
+
+            except Exception as e:
+                print(f"[Callback Error]: {e}")
+        """
         
         # ─────────────────────────────────────────────
         # Main solve routine
         # ─────────────────────────────────────────────
-        
+
         sample = instances_main[sample_idx]
-        
         N, m, clusters, clusters_to_nodes, all_dict = _prepare_instance(sample)
         M = list(range(1, m + 1))
-        
-        # FIX: ensure n_i is 1-based and consistent with how clusters are built
+
         raw_counts = Counter(sample["cluster_assignments"])
-        n_i = {k: v for k, v in raw_counts.items()}  # keys should already be 1-based
+        n_i = {k: v for k, v in raw_counts.items()}  # 1-based cluster keys
         N = sum(n_i.values())
-        
+
         # ── Build cost matrix ──────────────────────────────────────────────────────────
         cost_matrix = {}
         for n1 in all_dict:
@@ -202,63 +269,65 @@ for sample_idx in tqdm(range(len(instances_main))):
                 j = all_dict[n1]["indexed_node"]
                 k = all_dict[n2]["cluster"]
                 l = all_dict[n2]["indexed_node"]
-                # FIX: guard on cluster-indexed key, not raw node ID, to avoid same-cluster false zeros
                 if (i, j) == (k, l):
                     cost_matrix[i, j, k, l] = 0
                 else:
                     coord_a = all_dict[n1]["coordinates"]
                     coord_b = all_dict[n2]["coordinates"]
                     cost_matrix[i, j, k, l] = compute_distance_matrix(coord_a, coord_b)
-        
+
         # ── Model setup ────────────────────────────────────────────────────────────────
         start_time = datetime.now()
-        
+
         env = gp.Env(empty=True)
         env.setParam('LogToConsole', 0)
         env.start()
-        
+
         model = gp.Model("DS502_Project", env=env)
         model.Params.TimeLimit = 60
         model.Params.Threads = 8
-        model.Params.LazyConstraints = 1  # FIX: set before adding variables/writing LP
-        
+        model.Params.LazyConstraints = 1
+
+        # ── Variable index sets ────────────────────────────────────────────────────────
         cluster_node_set = {i: list(range(1, n_i[i] + 1)) for i in M}
-        cluster_node_set_ = {(i, j): 0 for i in M for j in range(1, n_i[i] + 1)}
+
+        # y[i,j]: 1 if node j in cluster i is selected — unchanged, already minimal
+        cluster_node_set_ = {(i, j) for i in M for j in range(1, n_i[i] + 1)}
+
+        # x[i,j,k,l]: directed arc from node j in cluster i to node l in cluster k.
+        # Kept as directed (i != k) to support asymmetric cost matrices.
+        # If your costs are symmetric, you can restrict to i < k and halve this set.
         cross_cluster_nodes_set = {
-            (i, j, k, l): 0
+            (i, j, k, l)
             for i in M for j in range(1, n_i[i] + 1)
             for k in M for l in range(1, n_i[k] + 1)
             if i != k
         }
-        cross_cluster_set = {(i, k): 0 for i in M for k in M if i != k}
-        
-        y = model.addVars(cluster_node_set_.keys(), vtype=GRB.BINARY, name="y")
-        x = model.addVars(cross_cluster_nodes_set.keys(), vtype=GRB.BINARY, name="x")
-        z = model.addVars(cross_cluster_set.keys(), vtype=GRB.BINARY, name="z")
-        
+
+        # ── Variables ──────────────────────────────────────────────────────────────────
+        # z removed entirely — it was just an alias for aggregated x, adding no value.
+        y = model.addVars(cluster_node_set_, vtype=GRB.BINARY, name="y")
+        x = model.addVars(cross_cluster_nodes_set, vtype=GRB.BINARY, name="x")
+
         # ── Objective ──────────────────────────────────────────────────────────────────
         model.setObjective(
             gp.quicksum(
                 cost_matrix[i, j, k, l] * x[i, j, k, l]
-                for i in M
-                for j in cluster_node_set[i]
-                for k in M
-                for l in cluster_node_set[k]
-                if i != k
+                for (i, j, k, l) in cross_cluster_nodes_set
             ),
             GRB.MINIMIZE
         )
-        
+
         # ── Constraints ────────────────────────────────────────────────────────────────
-        
-        # Exactly one node selected per cluster
+
+        # (C1) Exactly one node selected per cluster
         for i in M:
             model.addConstr(
                 gp.quicksum(y[i, j] for j in cluster_node_set[i]) == 1,
-                name=f"one_node_from_cluster_{i}"
+                name=f"one_node_per_cluster_{i}"
             )
-        
-        # Out-degree of selected node = 1
+
+        # (C2) Out-degree: selected node sends exactly one arc out
         for i in M:
             for j in cluster_node_set[i]:
                 model.addConstr(
@@ -266,10 +335,11 @@ for sample_idx in tqdm(range(len(instances_main))):
                         x[i, j, k, l]
                         for k in M for l in cluster_node_set[k]
                         if i != k
-                    ) == y[i, j]
+                    ) == y[i, j],
+                    name=f"outdegree_{i}_{j}"
                 )
-        
-        # In-degree of selected node = 1
+
+        # (C3) In-degree: selected node receives exactly one arc in
         for k in M:
             for l in cluster_node_set[k]:
                 model.addConstr(
@@ -277,38 +347,23 @@ for sample_idx in tqdm(range(len(instances_main))):
                         x[i, j, k, l]
                         for i in M for j in cluster_node_set[i]
                         if i != k
-                    ) == y[k, l]
+                    ) == y[k, l],
+                    name=f"indegree_{k}_{l}"
                 )
-        
-        # Link x to z (cluster-level arc)
-        for i in M:
-            for k in M:
-                if i != k:
-                    model.addConstr(
-                        gp.quicksum(
-                            x[i, j, k, l]
-                            for j in cluster_node_set[i]
-                            for l in cluster_node_set[k]
-                        ) == z[i, k]
-                    )
-        
-        # Each cluster has at least one outgoing cluster arc
-        #for i in M:
-        #    model.addConstr(gp.quicksum(z[i, k] for k in M if i != k) >= 1)
-        
-        # Total cluster arcs = m (one Hamiltonian cycle over clusters)
-        #model.addConstr(gp.quicksum(z[i, k] for i in M for k in M if i != k) == m)
-        
+
+        # NOTE: The z linking constraints and the two commented-out cluster-arc
+        # constraints are fully removed. C1+C2+C3 already enforce that exactly
+        # one Hamiltonian cycle visits one node per cluster. Subtours are handled
+        # by the lazy callback on x alone.
+
         # ── Attach data to model for callback ─────────────────────────────────────────
         model._x = x
         model._y = y
-        model._z = z
-        model._M = M      # FIX: pass M into model so callback doesn't rely on outer scope
-        
-        # FIX: write LP after all params and constraints are set
+        model._M = M
+
+        #model.optimize()
+        # ── Write LP and solve ─────────────────────────────────────────────────────────
         model.write(f"../../reports/lp_models/ds502_project_{sample['key']}.lp")
-        
-        # ── Solve ──────────────────────────────────────────────────────────────────────
         model.optimize(subtourelim)
         
         end_time = datetime.now()
@@ -339,12 +394,12 @@ for sample_idx in tqdm(range(len(instances_main))):
             
             # Extract selected edges
             vals_x = model.getAttr('x', x)
-            selected_edges = [(i,j,k,l) for (i,j,k,l) in cross_cluster_nodes_set.keys() if vals_x[i,j,k,l] > 0.5]
+            selected_edges = [(i,j,k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
 
             # Extract visited nodes
             vals_y = model.getAttr('x', y)
-            cluster_node_inflow = [(i,j) for (i,j,k,l) in cross_cluster_nodes_set.keys() if vals_x[i,j,k,l] > 0.5]
-            cluster_node_outflow = [(k,l) for (i,j,k,l) in cross_cluster_nodes_set.keys() if vals_x[i,j,k,l] > 0.5]
+            cluster_node_inflow = [(i,j) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
+            cluster_node_outflow = [(k,l) for (i,j,k,l) in cross_cluster_nodes_set if vals_x[i,j,k,l] > 0.5]
             #visited = [(i,j) for (i,j) in cluster_node_set_ if vals_y[i,j] > 0.5]
             #visited = [(i,j) for (i,j) in cluster_node_set_ if vals_y[i,j] > 0.5]
             result['cluster_node_inflow'] = list(set(cluster_node_inflow))  # Remove duplicates from multi-vehicle
@@ -352,10 +407,10 @@ for sample_idx in tqdm(range(len(instances_main))):
 
             
             
-            vals_z = model.getAttr('x', z)
-            visited = [(i,k) for (i,k) in cross_cluster_set.keys() if vals_z[i,k] > 0.5]
+            # vals_z = model.getAttr('x', z)
+            # visited = [(i,k) for (i,k) in cross_cluster_set.keys() if vals_z[i,k] > 0.5]
             
-            result['visited_clusters'] = list(set(visited))  # Remove duplicates from multi-vehicle
+            #result['visited_clusters'] = list(set(visited))  # Remove duplicates from multi-vehicle
 
             print(f"Objective: {result['objective']}")
             print(f"Runtime: {runtime}")
@@ -392,11 +447,10 @@ for sample_idx in tqdm(range(len(instances_main))):
 
         plot_ctsp_result(
             all_dict, out_route, out_clusters, clusters, result['objective'],
-            show=True,
+            show=False,
             figsize=None,
             input_title=f"{sample['key']}",
-            save_path=f"../../figures/{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}_extension",
-            
+            save_path=f"../../figures/{sample["key"]+"_" +f"{N}"+"_"+f"{m}"}_extension",    
         )
 
         report_list.append({"key":sample['key'],
