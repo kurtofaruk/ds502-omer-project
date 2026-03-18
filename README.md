@@ -48,6 +48,6 @@ This repository contains the end-to-end workflow for the project, spanning from 
 | **02** | Model Creation | model.py | ✅ Done |
 | **03** | Result Reporting | report.py | ✅ Done |
 | **04** | Plotting Functions | report.py | ✅ Done |
-| **05** | Final Report & Presentation | 🟨 In Progress |
+| **05** | Final Report & Presentation | pdf and pptx | 🟨 In Progress |
 
 >Code quality is monitored progressively. 
