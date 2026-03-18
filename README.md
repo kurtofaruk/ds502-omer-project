@@ -13,14 +13,18 @@ This repository contains the end-to-end workflow for the project, spanning from 
 ### 1. Data Ingestion & Preparation
 * **Data Collection:** Gathering and centralizing all necessary raw data sources from TSBLIB.
 * **Preprocessing:** Cleaning and structuring data for optimal model performance.
+* **Collected Data:** 31 instances were collected.
+* **Clustering:** Applied K-means clustering with given C values for each instance.
 
 ### 2. Research & Modeling
 * **Model Development:** Engineering and training the MILP architecture.
-* **Result Reporting:** Analyzing performance metrics and documenting outcomes.
+* **Extension:** Applied a smart subtour elimination constraint with LazyConstraint function of Gurobi.
 
-### 3. Visualization & Tooling
-* **Custom Plotting:** Developing specialized functions for data exploration and result interpretation.
-* **Subtour Investigation:** Transforming raw numbers into visual narratives.
+### 3. Reports
+* **Result Reporting:** Analyzing performance metrics and documenting outcomes. Objective, optimality gap(nominal and percentage values), runtime metrics gathered for each instance.
+
+### 3. Visualization 
+* **Custom Plotting:** Developed rich plot functions for result interpretation.
 
 ### 4. Final Delivery
 * **Progressive QA:** Continuous code quality checks and refactoring throughout the lifecycle.
@@ -33,9 +37,9 @@ This repository contains the end-to-end workflow for the project, spanning from 
 | Phase | Task | Status |
 | :--- | :--- | :--- |
 | **01** | Data Collection | ✅ Done |
-| **02** | Model Creation | 🟨 In Progress |
-| **03** | Result Reporting | ⬜ Pending |
-| **04** | Plotting Functions | ⬜ Pending |
-| **05** | Final Report & Presentation | ⬜ Pending |
+| **02** | Model Creation | ✅ Done |
+| **03** | Result Reporting | ✅ Done |
+| **04** | Plotting Functions | ✅ Done |
+| **05** | Final Report & Presentation | 🟨 In Progress |
 
 >Code quality is monitored progressively. 
