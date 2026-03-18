@@ -15,24 +15,25 @@ This repository contains the end-to-end workflow for the project, spanning from 
 * **Data Collection:** Gathering and centralizing all necessary raw data sources from TSBLIB.
 * ***Github Repo:** https://github.com/mastqe/tsplib
 
-* **Preprocessing:** Cleaning and structuring data for optimal model performance.
+* **Preprocessing:** Cleaning and structuring data to use in the Gurobi model.
 * **Collected Data:** 31 instances were collected.
 * **Clustering:** Applied K-means clustering with given C values for each instance.
 * **Data Prep. Script:** These steps prepared in src/main/data_prep.py
 
 
 ### 2. Research & Modeling
-* **Model Development:** Engineering and training the MILP architecture.
+* **Model Development:** Created MILP model and leveraged custom subtour elimination constraints to reduce runtime.
 * **Extension:** Applied a smart subtour elimination constraint with LazyConstraint function of Gurobi.
+* **Model Parameters:** Runtime was limited as 60 seconds for each instance and 8 threads were utilized.
 * **Model Script:** These steps modeled in src/main/model.py
 
 ### 3. Reports
-* **Result Reporting:** Analyzing performance metrics and documenting outcomes. Objective, optimality gap(nominal and percentage values), runtime metrics gathered for each instance.
-* **Report Script:** These steps modeled in src/main/report.py
+* **Result Reporting:** Analyzing performance metrics and documenting outcomes. Objective, optimality gap (nominal and percentage values), and runtime metrics gathered for each instance.
+* **Report Script:** Report generation coded in src/main/report.py
 
 ### 3. Visualization 
 * **Custom Plotting:** Developed rich plot functions for result interpretation.
-* **Vis. Script:** These steps modeled in src/main/report.py
+* **Vis. Script:** Plot functions created in src/main/report.py
 
 ### 4. Final Delivery
 * **Progressive QA:** Continuous code quality checks and refactoring throughout the lifecycle.
