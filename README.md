@@ -48,7 +48,8 @@ python genetic_algorithm.py        # genetic algorithm
 * **Script:** `src/main_2/report.py`
 
 ### 6. Final Delivery
-* **Materials:** Comprehensive report (`Deliverable5_MDP.md`) and presentation deck.
+* **Materials:** Comprehensive report (`Final Report.pdf`) and presentation deck.
+* **Presentation:** Comprehensive presentation (`Final Presentaiton.pptx`) and presentation deck.
 
 ---
 
