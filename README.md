@@ -33,7 +33,7 @@ python genetic_algorithm.py        # genetic algorithm
 
 ### 3. MDP Reformulation & Heuristics
 * **MDP:** G-TSP recast as a finite-horizon, deterministic, fully observable Markov Decision Process (state = position + visited-cluster set).
-* **Exact DP:** Held-Karp-style memoised recursion — optimal, feasible for C ≤ 15.
+* **Exact DP:** Memoised recursion — optimal, feasible for C ≤ 15.
 * **Greedy heuristic:** Nearest-unvisited-cluster policy, O(C² · n_max²), runs on all instances.
 * **Scripts:** `src/main_2/mdp.py`, `src/main_2/mdp_notes.md`
 
