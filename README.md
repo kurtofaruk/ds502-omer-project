@@ -32,7 +32,7 @@ python genetic_algorithm.py        # genetic algorithm
 * **Script:** `src/main_2/model.py`
 
 ### 3. MDP Reformulation & Heuristics
-* **MDP:** CTSP recast as a finite-horizon, deterministic, fully observable Markov Decision Process (state = position + visited-cluster set).
+* **MDP:** G-TSP recast as a finite-horizon, deterministic, fully observable Markov Decision Process (state = position + visited-cluster set).
 * **Exact DP:** Held-Karp-style memoised recursion — optimal, feasible for C ≤ 15.
 * **Greedy heuristic:** Nearest-unvisited-cluster policy, O(C² · n_max²), runs on all instances.
 * **Scripts:** `src/main_2/mdp.py`, `src/main_2/mdp_notes.md`
@@ -70,7 +70,7 @@ python genetic_algorithm.py        # genetic algorithm
 
 ## 🧠 MDP Reformulation (Deliverable D5)
 
-The CTSP is reinterpreted as a finite-horizon, deterministic, fully observable Markov Decision Process.
+The G-TSP is reinterpreted as a finite-horizon, deterministic, fully observable Markov Decision Process.
 
 **State:** `s_t = ( (i,j), V )` — current cluster-node position and set of visited clusters  
 **Action:** `a = (k, l)` — next unvisited cluster k and node l within it  
@@ -92,7 +92,7 @@ The subtour elimination constraints are replaced entirely by the visited-set V �
 
 ## 🧬 Genetic Algorithm
 
-A memetic GA that separates the two sub-problems of the CTSP:
+A memetic GA that separates the two sub-problems of the G-TSP:
 
 | Sub-problem | Solved by |
 |---|---|
