@@ -62,7 +62,7 @@ python genetic_algorithm.py        # genetic algorithm
 | **03** | MDP Reformulation | `mdp_notes.md`, `mdp.py` | ✅ Done |
 | **04** | Genetic Algorithm | `genetic_algorithm.py` | ✅ Done |
 | **05** | Result Reporting & Plots | `report.py` | ✅ Done |
-| **06** | Final Report & Presentation | pdf and pptx | 🟨 In Progress |
+| **06** | Final Report & Presentation | pdf and pptx | ✅ Done |
 
 > Code quality is monitored progressively. All third-party dependencies are pinned in `requirements.txt`.
 
