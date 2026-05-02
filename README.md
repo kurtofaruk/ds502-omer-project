@@ -6,38 +6,49 @@
 
 This repository contains the end-to-end workflow for the project, spanning from initial data acquisition to final stakeholder delivery.
 
-## 🧑🏻‍💻 Main Script: Project can be run by src/main_2/main.py ⩤
+## 🧑🏻‍💻 Main Script: Project can be run by `src/main_2/main.py`
+
+```bash
+pip install -r requirements.txt   # install dependencies
+cd src/main_2
+python main.py                     # MILP solver + reports
+python mdp.py                      # greedy & exact DP heuristics
+python genetic_algorithm.py        # genetic algorithm
+```
+
 ---
 
 ## 🚀 Project Milestones
 
 ### 1. Data Ingestion & Preparation
-* **Data Collection:** Gathering and centralizing all necessary raw data sources from TSBLIB.
-* ***Github Repo:** https://github.com/mastqe/tsplib
+* **Data Collection:** 31 TSPLIB benchmark instances (att48 – pr439) sourced from [mastqe/tsplib](https://github.com/mastqe/tsplib).
+* **Preprocessing:** Coordinate extraction and K-means clustering (random_state=502) with predefined C values per instance.
+* **Script:** `src/main_2/data_prep.py`
 
-* **Preprocessing:** Cleaning and structuring data to use in the Gurobi model.
-* **Collected Data:** 31 instances were collected.
-* **Clustering:** Applied K-means clustering with given C values for each instance.
-* **Data Prep. Script:** These steps prepared in src/main/data_prep.py
+### 2. MILP Model
+* **Formulation:** Binary MILP for the Generalized TSP — select one representative node per cluster and find the minimum-cost Hamiltonian cycle.
+* **Subtour elimination:** Lazy constraint callback (`subtourelim`) added via Gurobi's `LazyConstraints` parameter.
+* **Parameters:** 120 s time limit, 8 threads per instance.
+* **Script:** `src/main_2/model.py`
 
+### 3. MDP Reformulation & Heuristics
+* **MDP:** CTSP recast as a finite-horizon, deterministic, fully observable Markov Decision Process (state = position + visited-cluster set).
+* **Exact DP:** Held-Karp-style memoised recursion — optimal, feasible for C ≤ 15.
+* **Greedy heuristic:** Nearest-unvisited-cluster policy, O(C² · n_max²), runs on all instances.
+* **Scripts:** `src/main_2/mdp.py`, `src/main_2/mdp_notes.md`
 
-### 2. Research & Modeling
-* **Model Development:** Created MILP model and leveraged custom subtour elimination constraints to reduce runtime.
-* **Extension:** Applied a smart subtour elimination constraint with LazyConstraint function of Gurobi.
-* **Model Parameters:** Runtime was limited as 60 seconds for each instance and 8 threads were utilized.
-* **Model Script:** These steps modeled in src/main/model.py
+### 4. Genetic Algorithm
+* **Design:** Memetic GA — chromosome encodes one node selected per cluster; Gurobi solves the resulting C-node TSP at every fitness evaluation to find the optimal cluster visit order.
+* **Operators:** Uniform crossover on node selections, per-cluster random mutation, node optimisation local search using the Gurobi-returned sequence.
+* **Script:** `src/main_2/genetic_algorithm.py`
 
-### 3. Reports
-* **Result Reporting:** Analyzing performance metrics and documenting outcomes. Objective, optimality gap (nominal and percentage values), and runtime metrics gathered for each instance.
-* **Report Script:** Report generation coded in src/main/report.py
+### 5. Reports & Visualisation
+* **Metrics:** Objective value, runtime, MIP gap %, absolute gap, greedy/GA gap % vs MILP.
+* **Plots:** Per-method bar charts, gap % analysis, runtime scatter, objective vs C.
+* **Script:** `src/main_2/report.py`
 
-### 3. Visualization 
-* **Custom Plotting:** Developed rich plot functions for result interpretation.
-* **Vis. Script:** Plot functions created in src/main/report.py
-
-### 4. Final Delivery
-* **Progressive QA:** Continuous code quality checks and refactoring throughout the lifecycle.
-* **Materials:** Preparation of the final comprehensive report and presentation deck.
+### 6. Final Delivery
+* **Materials:** Comprehensive report (`Deliverable5_MDP.md`) and presentation deck.
 
 ---
 
@@ -45,14 +56,14 @@ This repository contains the end-to-end workflow for the project, spanning from 
 
 | Phase | Task | Script | Status |
 | :--- | :--- | :--- | :--- |
-| **01** | Data Collection | data_prep.py | ✅ Done |
-| **02** | Model Creation | model.py | ✅ Done |
-| **03** | Result Reporting | report.py | ✅ Done |
-| **04** | Plotting Functions | report.py | ✅ Done |
-| **05** | MDP Reformulation | mdp_notes.md, mdp.py | ✅ Done |
+| **01** | Data Collection & Preparation | `data_prep.py` | ✅ Done |
+| **02** | MILP Model | `model.py` | ✅ Done |
+| **03** | MDP Reformulation | `mdp_notes.md`, `mdp.py` | ✅ Done |
+| **04** | Genetic Algorithm | `genetic_algorithm.py` | ✅ Done |
+| **05** | Result Reporting & Plots | `report.py` | ✅ Done |
 | **06** | Final Report & Presentation | pdf and pptx | 🟨 In Progress |
 
->Code quality is monitored progressively.
+> Code quality is monitored progressively. All third-party dependencies are pinned in `requirements.txt`.
 
 ---
 
@@ -72,18 +83,23 @@ V_t( (i,j), V ) = min_{(k,l): k ∉ V} { d((i,j),(k,l)) + V_{t+1}((k,l), V ∪ {
 V_C( (i,j), M ) = d( (i,j), start_node )
 ```
 
-The subtour elimination constraints from the MILP are replaced entirely by the visited-set V in the state — a cluster cannot be revisited because actions are restricted to `M \ V`.
+The subtour elimination constraints are replaced entirely by the visited-set V — a cluster cannot be revisited because actions are restricted to `M \ V`.
 
-**Key Files:**
-- `src/main_2/mdp_notes.md` — full MDP formulation, Bellman equation, mapping table, illustrative example, and experiment plan
-- `src/main_2/mdp.py` — exact DP implementation (feasible for small instances, C ≤ ~15) and greedy nearest-cluster heuristic baseline
+**Key files:** `src/main_2/mdp.py` · `src/main_2/mdp_notes.md`
 
-**New Assumptions Introduced:**
-- Tour traversal direction is fixed (reversing gives same cost due to symmetric distances)
-- Costs are deterministic Euclidean distances (no stochastic extension in base model)
-- Exact DP is used only for small instances; large instances still use the Gurobi MILP
+---
 
-**Planned Experiments (Week 9/10):**
-- Compare MILP objective vs greedy heuristic across all 31 instances
-- Measure how MIP gap scales with N and C under 60s / 120s / 300s time limits
-- Report: objective value, runtime, MIP gap %, absolute gap, greedy gap %
+## 🧬 Genetic Algorithm
+
+A memetic GA that separates the two sub-problems of the CTSP:
+
+| Sub-problem | Solved by |
+|---|---|
+| Which node to visit in each cluster | GA (evolves chromosome = `node_sel` dict) |
+| Optimal cluster visit order | Gurobi TSP solver (`tour_cost` in `gurobi_solver_route_parallel.py`) |
+
+**Chromosome:** `{ cluster_id: node_id }` — one entry per cluster.  
+**Fitness:** Gurobi solves the C-node TSP on the selected nodes, returning the optimal tour distance and the optimal cluster sequence.  
+**Local search:** After each Gurobi evaluation, node selections are refined using the returned cluster sequence (each cluster picks the node minimising the sum of its two incident edge distances).
+
+**Key file:** `src/main_2/genetic_algorithm.py`
