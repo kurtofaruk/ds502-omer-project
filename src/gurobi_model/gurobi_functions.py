@@ -151,12 +151,6 @@ def subtourelim(model, where):
                 if (i, j, k, l) in model._x
             )
 
-            lhs_y = gp.quicksum(
-                model._y[i, j]
-                for (i, j) in subtour_node_set
-                if (i, j) in model._y
-            )
-
             #model.cbLazy(lhs_x - lhs_y <= -1)
             #rhs = len(subtour_edges) - 1
             
