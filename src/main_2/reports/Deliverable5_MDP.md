@@ -228,7 +228,7 @@ The Bellman recursion evaluates all such trajectories and selects the globally m
 ## 8. Experiment Plan
 
 ### Goal
-Compare MILP, exact DP, and greedy MDP heuristic across all 31 TSPLIB instances. Quantify how solution quality and runtime vary with problem size.
+Compare MILP, exact DP, greedy MDP heuristic, and Genetic Algorithm across all 31 TSPLIB instances. Quantify how solution quality and runtime vary with problem size.
 
 ### What Will Be Tested
 
@@ -237,7 +237,8 @@ Compare MILP, exact DP, and greedy MDP heuristic across all 31 TSPLIB instances.
 | **MILP scalability** | How does runtime and MIP gap grow as $N$ and $C$ increase? |
 | **Time limit sensitivity** | How does solution quality change at 60s vs 120s vs 300s limits? |
 | **Heuristic vs optimal** | Compare greedy MDP policy against MILP best-found solution. |
-| **DP vs MILP (small instances)** | Verify exact DP matches MILP optimum for $C \leq 11$. |
+| **DP vs MILP (small instances)** | Verify exact DP matches MILP optimum for $C \leq 15$. |
+| **GA vs baselines** | Compare GA tour quality and runtime against MILP, greedy, and exact DP. |
 
 ### Varying Parameters
 
@@ -245,7 +246,8 @@ Compare MILP, exact DP, and greedy MDP heuristic across all 31 TSPLIB instances.
 |-----------|-------|
 | Instance size $N$ | 48 to 439 |
 | Number of clusters $C$ | 10 to 88 |
-| Time limit | 60s, 120s, 300s |
+| MILP time limit | 60s, 120s, 300s |
+| GA time budget | 120s total per instance |
 
 ### Performance Measures
 
@@ -256,12 +258,14 @@ Compare MILP, exact DP, and greedy MDP heuristic across all 31 TSPLIB instances.
 | **MIP gap (%)** | $\frac{|\text{ObjVal} - \text{ObjBound}|}{\text{ObjVal}} \times 100$ |
 | **Absolute gap** | $|\text{ObjVal} - \text{ObjBound}|$ |
 | **Greedy gap (%)** | $\frac{\text{greedy} - \text{MILP}}{\text{MILP}} \times 100$ |
+| **GA gap (%)** | $\frac{\text{GA} - \text{MILP}}{\text{MILP}} \times 100$ |
 
 ### Baselines
 
 - **MILP optimal (or best-found):** Gurobi with lazy subtour elimination, 120s limit, 8 threads
-- **Exact DP:** Held-Karp style memoized recursion, only for $C \leq 11$
+- **Exact DP:** Held-Karp style memoized recursion, only for $C \leq 15$
 - **Greedy heuristic:** Nearest-unvisited-cluster policy, tries one start per cluster
+- **Genetic Algorithm:** Memetic GA with Gurobi-based fitness evaluation (see Section 9)
 
 ### Expected Findings
 
@@ -269,8 +273,91 @@ Compare MILP, exact DP, and greedy MDP heuristic across all 31 TSPLIB instances.
 - MIP gap increases significantly for $C > 40$ under 120s limit
 - Greedy heuristic produces tours within ~15–30% of MILP optimal, orders of magnitude faster
 - Exact DP confirms MILP optimality on small instances
+- GA expected to improve on greedy by ~5–15% through structured node-selection search
+
+---
+
+## 9. Genetic Algorithm Approach
+
+### 9.1 Motivation
+
+The MDP view exposes a natural two-level decomposition of the CTSP:
+
+1. **Node selection:** which representative node to visit in each cluster
+2. **Cluster ordering:** the sequence in which clusters are visited
+
+The greedy heuristic and exact DP address both levels simultaneously in a single forward pass. The Genetic Algorithm addresses level 1 explicitly (evolving node selections) while delegating level 2 to an exact TSP solver (Gurobi), yielding a principled search over the exponentially large node-selection space.
+
+### 9.2 Chromosome Representation
+
+Each individual in the population is an **`indexed_route` list** of length $C$:
+
+$$\text{chromosome} = [\,n_1,\; n_2,\; \ldots,\; n_C\,]$$
+
+where $n_i$ is the **within-cluster indexed node** (1-based) chosen for cluster $i$. Position $i-1$ (0-based) holds the indexed node for cluster $i$. Node indices are local to each cluster — cluster $i$ contains nodes $\{1, \ldots, |\text{cluster}_i|\}$.
+
+There is no explicit cluster-sequence gene. Given a chromosome, the optimal cluster visit order is computed exactly by Gurobi (Section 9.3).
+
+### 9.3 Fitness Evaluation
+
+$$\text{fitness}(\text{chromosome}) = \min_{\text{cluster ordering}} \text{TSP}([\,\text{coord}(1, n_1),\; \ldots,\; \text{coord}(C, n_C)\,])$$
+
+Fitness is evaluated in **parallel batches** via `call_mp_gurobi_route_level` (implemented in `gurobi_solver_route_parallel.py`):
+
+1. Extract the $C$ selected node coordinates from the chromosome.
+2. Batch all unevaluated individuals and solve each as a $C$-node TSP with Gurobi (subtour-elimination callback, `time_limit_eval` seconds per call).
+3. Return the **optimal tour distance** (fitness) and the **optimal cluster visit sequence**.
+
+A **chromosome-keyed cache** (`_fitness_cache`) stores results for every evaluated `indexed_route` tuple, avoiding redundant Gurobi calls for identical chromosomes that reappear across generations.
+
+### 9.4 Genetic Operators
+
+| Operator | Description |
+|----------|-------------|
+| **Initialisation** | Purely random — each cluster independently draws a uniformly random valid indexed node |
+| **Selection** | Roulette wheel (minimisation-adapted): selection probability $\propto \max(f) - f_i + \varepsilon$; two distinct parents selected per pair |
+| **Crossover** | Randomly chosen per offspring: two-point (30%), single-point (30%), or uniform (40%); followed by `validate_route` to repair any out-of-range indexed nodes |
+| **Mutation** | Point mutation (60%): reassign one cluster's node to a different valid node; or swap mutation (40%): exchange two positions in the chromosome; followed by `validate_route` |
+| **Survivor selection** | Truncation — parents and offspring are merged; top `pop_size` by fitness survive to the next generation (implicit elitism) |
+| **Elite history** | All-time top `elite_size = 5` individuals tracked for reporting; does not re-inject into population |
+
+### 9.5 Algorithm Parameters
+
+| Parameter | Default Value |
+|-----------|---------------|
+| Population size | 100 |
+| Max generations | 100 |
+| Crossover pairs per generation (`ga_counter`) | `max(pop_size, 30)` |
+| Crossover-then-mutate offspring per gen (`cx_mut_count`) | `ga_counter // 2` |
+| Mutation-only offspring per gen (`mut_count`) | `ga_counter // 3` |
+| Gurobi time limit per fitness eval | 20 s |
+| Total GA wall-clock budget | 120 s |
+| Stall limit (early stop) | 20 generations without improvement |
+| Elite history size | 5 |
+| Random seed | 42 |
+
+Early stopping triggers on whichever comes first: time budget exceeded, stall limit reached, or full population convergence (all chromosomes identical).
+
+### 9.6 Connection to the MDP
+
+The GA fitness evaluation is equivalent to solving:
+
+$$\min_{\text{cluster ordering}} V_0\!\bigl((i_0,j_0),\{i_0\}\bigr) \quad \text{given fixed node\_sel}$$
+
+where the Bellman recursion collapses to a standard TSP on $C$ fixed points. The GA outer loop then searches over node selections to minimise this already-optimised inner cost — a Benders-style decomposition embedded in an evolutionary framework.
+
+### 9.7 Output
+
+Results are saved to `reports/results_ga.xlsx`. Comparison plots (GA vs MILP vs Greedy) are generated by `report.plot_ga_report()` and saved to the `figures/` directory:
+
+| Figure | Content |
+|--------|---------|
+| `ga_vs_milp_objective.png` | Grouped bar chart: MILP vs GA vs Greedy tour distance |
+| `ga_gap_comparison.png` | GA gap % vs Greedy gap % above MILP optimal |
+| `ga_runtime_scatter.png` | MILP runtime vs GA runtime scatter |
+| `ga_obj_vs_C.png` | Tour distance vs $C$ — one series per method |
 
 ---
 
 *Report prepared for DS 502 – Semester Project, Deliverable D5*  
-*Implementation files: `src/main_2/mdp.py`, `src/main_2/mdp_notes.md`*
+*Implementation files: `src/main_2/mdp.py`, `src/main_2/mdp_notes.md`, `src/main_2/genetic_algorithm.py`*

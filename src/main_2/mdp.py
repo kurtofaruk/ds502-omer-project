@@ -200,9 +200,8 @@ def plot_comparison(mdp_df, milp_df, out_dir):
     # 1. Greedy vs MILP objective
     fig, ax = plt.subplots(figsize=(14, 6))
     w = 0.35
-    ax.bar(x - w/2, merged['obj'],         width=w, label='MILP optimal', color='#378ADD', zorder=2)
-    ax.bar(x + w/2, merged['greedy_cost'], width=w, label='Greedy (MDP)', color='#F4A261', zorder=2)
-    ax.bar(x + w/2, merged['dp_cost'], width=w, label='Exact DP', color='#2A9D8F', zorder=2)
+    ax.bar(x - w / 2, merged['obj'],         width=w, label='MILP optimal', color='#378ADD', zorder=2)
+    ax.bar(x + w / 2, merged['greedy_cost'], width=w, label='Greedy (MDP)', color='#F4A261', zorder=2)
     ax.set_title('Objective: MILP vs Greedy heuristic', fontsize=11)
     ax.set_ylabel('Tour distance')
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'{v:,.0f}'))
@@ -211,7 +210,6 @@ def plot_comparison(mdp_df, milp_df, out_dir):
     _style(ax)
     plt.tight_layout()
     plt.savefig(out_dir / 'mdp_vs_milp_objective.png', dpi=150, bbox_inches='tight')
-    plt.show()
     plt.close()
 
     # 2. Greedy gap %

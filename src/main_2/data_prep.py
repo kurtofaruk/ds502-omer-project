@@ -1,20 +1,14 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
 import pickle
-import sys
-import os
 import re
+import sys
 from pathlib import Path
+
+from sklearn.cluster import KMeans
 
 RANDOM_STATE = 502
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 from data_utils import get_tsp_coords
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "visualisations"))
-from plot_instance import plot_instance_simple
 
 
 ARTICLE_INSTANCES = [
@@ -32,10 +26,12 @@ C_VALUES = [
     80, 84, 88
 ]
 
+# Name → cluster count lookup; safe even when some .tsp files are absent
+C_MAP = dict(zip(ARTICLE_INSTANCES, C_VALUES))
+
 
 def get_filtered_instances(base_dir):
-    search_pattern = base_dir / "./data/tsplib/*.tsp"
-    path_list = list(search_pattern.parent.glob(search_pattern.name))
+    path_list = list((base_dir / "data/tsplib").glob("*.tsp"))
 
     filtered = []
     for path in path_list:
@@ -43,49 +39,47 @@ def get_filtered_instances(base_dir):
         if name in ARTICLE_INSTANCES:
             match = re.search(r'(\d+)', name)
             node_count = int(match.group(1))
-            filtered.append({
-                'name': name,
-                'nodes': node_count,
-                'path': path
-            })
+            filtered.append({'name': name, 'nodes': node_count, 'path': path})
 
     filtered.sort(key=lambda x: (x['nodes'], x['name']))
     return filtered
 
 
 def check_missing(filtered_instances):
-    filtered_keys = [inst['name'] for inst in filtered_instances]
+    found = {inst['name'] for inst in filtered_instances}
     for key in ARTICLE_INSTANCES:
-        if key not in filtered_keys:
-            print(f"{key} not found")
+        if key not in found:
+            print(f"[MISSING] {key} not found")
 
 
 def build_instances(filtered_instances):
     instances = []
-    for inst_idx, inst in enumerate(filtered_instances):
-        instance_name = inst['name']
-        coords = get_tsp_coords(instance_name)
+    n_total = len(filtered_instances)
+    for idx, inst in enumerate(filtered_instances):
+        name   = inst['name']
+        coords = get_tsp_coords(name)
         if coords is None:
-            print(f"[WARNING] Could not load coords for {instance_name}, skipping.")
+            print(f"[WARNING] Could not load coords for {name}, skipping.")
             continue
-        C = C_VALUES[inst_idx]
-        kmeans = KMeans(n_init=10, n_clusters=C, random_state=RANDOM_STATE)
+        C = C_MAP[name]
+        kmeans   = KMeans(n_init=10, n_clusters=C, random_state=RANDOM_STATE)
         clusters = [int(v) + 1 for v in kmeans.fit_predict(coords)]
         instances.append({
-            "key": instance_name,
-            "x_coordinates": coords[:, :1].flatten(),
-            "y_coordinates": coords[:, 1:2].flatten(),
+            "key":               name,
+            "x_coordinates":     coords[:, :1].flatten(),
+            "y_coordinates":     coords[:, 1:2].flatten(),
             "cluster_assignments": clusters,
-            "n_clusters": C
+            "n_clusters":        C,
         })
-        print(f"  [{inst_idx+1}/{len(filtered_instances)}] {instance_name} — N={len(coords)}, C={C}")
+        print(f"  [{idx + 1}/{n_total}] {name} — N={len(coords)}, C={C}")
     return instances
 
 
 def save_instances(instances, output_path):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    pickle.dump(instances, open(output_path, "wb"))
+    with open(output_path, "wb") as f:
+        pickle.dump(instances, f)
     print(f"\nSaved {len(instances)} instances to {output_path}")
 
 
@@ -101,7 +95,7 @@ def main():
     instances = build_instances(filtered_instances)
 
     print("\n── Saving ────────────────────────────────────────────────────────")
-    save_instances(instances, base_dir / "./data/tsplib_instances.pkl")
+    save_instances(instances, base_dir / "data/tsplib_instances.pkl")
 
 
 if __name__ == "__main__":
